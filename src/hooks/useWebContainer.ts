@@ -41,6 +41,7 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
   const [isAutoSync, setIsAutoSync] = useState(true);
   const [deviceSize, setDeviceSize] = useState<DeviceSize>('desktop');
   const [activeTab, setActiveTab] = useState<ActiveTab>('preview');
+  const [isTerminalReady, setIsTerminalReady] = useState(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
@@ -48,7 +49,7 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
   const devProcessRef = useRef<any>(null);
   const prevIsGenerating = useRef(isGenerating);
 
-  // Initialize Terminal exactly once
+  // Initialize Terminal
   useEffect(() => {
     if (!terminalRef.current || xtermRef.current) return;
 
@@ -57,14 +58,21 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
       fontFamily: 'monospace',
       fontSize: 12,
       convertEol: true,
+      cursorBlink: true,
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-    term.open(terminalRef.current);
-    try { fitAddon.fit(); } catch (e) { }
-
-    xtermRef.current = term;
-    fitAddonRef.current = fitAddon;
+    
+    try {
+      term.open(terminalRef.current);
+      fitAddon.fit();
+      xtermRef.current = term;
+      fitAddonRef.current = fitAddon;
+      setIsTerminalReady(true);
+      term.writeln('\x1b[32m[System]\x1b[0m Terminal initialized.');
+    } catch (e) {
+      console.error("Failed to initialize terminal", e);
+    }
 
     const resizeObserver = new ResizeObserver(() => {
       if (!terminalRef.current || terminalRef.current.offsetWidth === 0) return;
@@ -74,9 +82,7 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
           if (xtermRef.current && xtermRef.current.element && fitAddonRef.current) {
             fitAddonRef.current.fit(); 
           }
-        } catch (e) { 
-          // Ignore fit errors when terminal is not ready or hidden
-        }
+        } catch (e) { }
       });
     });
     resizeObserver.observe(terminalRef.current);
@@ -90,8 +96,9 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
         xtermRef.current = null;
       }
       fitAddonRef.current = null;
+      setIsTerminalReady(false);
     };
-  }, []); // Run only once when ref is available
+  }, [terminalRef.current]); // Re-run if ref element changes
 
   // Fit terminal when tab changes
   useEffect(() => {
@@ -134,7 +141,8 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
       await webcontainerInstance.mount(tree);
 
       // Run npm install
-      const packageJsonHash = btoa(initialFiles['package.json'] || '');
+      const packageJsonContent = initialFiles['package.json'] || '';
+      const packageJsonHash = packageJsonContent.length.toString() + packageJsonContent.slice(0, 100);
       const cachedHash = localStorage.getItem('wc_package_json_hash');
       
       // Check if node_modules already exists
@@ -220,11 +228,11 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
   const hasBooted = useRef(false);
   useEffect(() => {
     // Only boot if we have xterm initialized, so we don't swallow logs
-    if (Object.keys(files).length > 0 && !hasBooted.current && !isGenerating && xtermRef.current) {
+    if (Object.keys(files).length > 0 && !hasBooted.current && !isGenerating && isTerminalReady) {
       hasBooted.current = true;
       bootContainer(files);
     }
-  }, [files, isGenerating, bootContainer, activeTab]);
+  }, [files, isGenerating, bootContainer, isTerminalReady]);
 
   // Expose manual sync and reset
   const syncPreview = useCallback(async () => {

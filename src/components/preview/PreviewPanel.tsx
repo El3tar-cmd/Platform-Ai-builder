@@ -10,7 +10,6 @@ interface PreviewPanelProps {
   iframeUrl: string;
   isBooting: boolean;
   terminalRef: RefObject<HTMLDivElement | null>;
-  attachTerminal?: (el: HTMLDivElement | null) => void;
 }
 
 export function PreviewPanel({
@@ -21,16 +20,7 @@ export function PreviewPanel({
   iframeUrl,
   isBooting,
   terminalRef,
-  attachTerminal,
 }: PreviewPanelProps) {
-  const localTerminalRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (activeTab === 'console' && attachTerminal && localTerminalRef.current) {
-      attachTerminal(localTerminalRef.current);
-    }
-  }, [activeTab, attachTerminal]);
-
   return (
     <div
       className={`h-full transition-all duration-300 ease-in-out ${iframeWidth} bg-white rounded-lg shadow-2xl overflow-hidden border border-zinc-800 flex flex-col`}
@@ -108,7 +98,7 @@ export function PreviewPanel({
               System Logs
             </span>
           </div>
-          <div ref={localTerminalRef} className="flex-1 overflow-hidden p-2" />
+          <div ref={terminalRef as any} className="flex-1 overflow-hidden p-2" />
         </div>
       </div>
     </div>

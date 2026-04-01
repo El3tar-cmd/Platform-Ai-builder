@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Monitor, Loader2 } from 'lucide-react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
-import { motion, AnimatePresence } from 'motion/react';
 
 // Hooks
 import { useOllamaModels } from './hooks/useOllamaModels';
@@ -24,13 +23,6 @@ import { PackageManagerModal } from './components/modals/PackageManagerModal';
 import { GitHubModal } from './components/modals/GitHubModal';
 
 export default function App() {
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1500);
-    return () => clearTimeout(timer);
-  }, []);
-
   // ─── UI State ───
   const [showSettings, setShowSettings] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -246,34 +238,7 @@ export default function App() {
 
   // ─── Render ───
   return (
-    <>
-      <AnimatePresence>
-        {isLoading && (
-          <motion.div
-            key="loader"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-            className="fixed inset-0 bg-zinc-950 flex flex-col items-center justify-center z-[100]"
-          >
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-              className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full mb-4"
-            />
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="text-zinc-400 font-medium tracking-wider uppercase text-xs"
-            >
-              Initializing Environment
-            </motion.p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="flex h-screen w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden relative">
+    <div className="flex h-screen w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden relative">
       {/* Mobile Sidebar (Fixed Overlay) */}
       {isMobile && (
         <ChatSidebar
@@ -449,7 +414,6 @@ export default function App() {
         files={files}
         projectName={currentProject.name}
       />
-      </div>
-    </>
+    </div>
   );
 }

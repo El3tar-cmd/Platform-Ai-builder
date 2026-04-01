@@ -34,6 +34,9 @@ export function CodeView({
 }: CodeViewProps) {
   const [selectedFile, setSelectedFile] = useState<string>('src/App.tsx');
   const [isDiffView, setIsDiffView] = useState(false);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   const previousFiles =
     currentProject.historyIndex > 0
@@ -70,32 +73,47 @@ export function CodeView({
   };
 
   return (
-    <div className="w-full h-full flex bg-[#1e1e1e] rounded-lg border border-zinc-800 overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-[#1e1e1e] rounded-lg border border-zinc-800 overflow-hidden">
       <PanelGroup orientation="horizontal">
-        <Panel defaultSize={20} minSize={15} maxSize={40}>
-          <FileExplorer
-            files={files}
-            selectedFile={selectedFile}
-            onSelectFile={setSelectedFile}
-            onCreateFile={handleCreateFile}
-            onDeleteFile={handleDeleteFile}
-            onRenameFile={handleRenameFile}
-          />
-        </Panel>
+        {isSidebarVisible && (
+          <>
+            <Panel defaultSize={isMobile ? 100 : 20} minSize={isMobile ? 100 : 15} maxSize={isMobile ? 100 : 40}>
+              <FileExplorer
+                files={files}
+                selectedFile={selectedFile}
+                onSelectFile={(path) => {
+                  setSelectedFile(path);
+                  if (isMobile) setIsSidebarVisible(false);
+                }}
+                onCreateFile={handleCreateFile}
+                onDeleteFile={handleDeleteFile}
+                onRenameFile={handleRenameFile}
+              />
+            </Panel>
+            {!isMobile && <PanelResizeHandle className="w-1 bg-[#252526] hover:bg-indigo-500 transition-colors cursor-col-resize" />}
+          </>
+        )}
 
-        <PanelResizeHandle className="w-1 bg-[#252526] hover:bg-indigo-500 transition-colors cursor-col-resize" />
-
-        <Panel defaultSize={80} minSize={30}>
-          <PanelGroup orientation="vertical">
-            <Panel defaultSize={70} minSize={20}>
-              <div className="flex-1 h-full overflow-hidden flex flex-col bg-[#1e1e1e]">
-                {/* Editor Header */}
-                <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3c3c3c]">
-                  <div className="text-sm text-[#cccccc] flex items-center gap-2">
-                    <FileCode2 className="w-4 h-4" />
-                    {selectedFile}
-                  </div>
-                  <div className="flex items-center gap-2">
+        {(!isMobile || !isSidebarVisible) && (
+          <Panel defaultSize={isMobile ? 100 : 80} minSize={isMobile ? 100 : 30}>
+            <PanelGroup orientation="vertical">
+              <Panel defaultSize={70} minSize={20}>
+                <div className="flex-1 h-full overflow-hidden flex flex-col bg-[#1e1e1e]">
+                  {/* Editor Header */}
+                  <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3c3c3c]">
+                    <div className="text-sm text-[#cccccc] flex items-center gap-2 min-w-0">
+                      {isMobile && (
+                        <button
+                          onClick={() => setIsSidebarVisible(true)}
+                          className="p-1 hover:bg-[#3c3c3c] rounded text-[#cccccc]"
+                        >
+                          <FileCode2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {!isMobile && <FileCode2 className="w-4 h-4 shrink-0" />}
+                      <span className="truncate">{selectedFile}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
                     <button
                       onClick={() => setIsDiffView(!isDiffView)}
                       className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
@@ -175,6 +193,7 @@ export function CodeView({
             )}
           </PanelGroup>
         </Panel>
+      )}
       </PanelGroup>
     </div>
   );

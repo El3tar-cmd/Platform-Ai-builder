@@ -134,21 +134,46 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
       await webcontainerInstance.mount(tree);
 
       // Run npm install
-      xtermRef.current?.writeln(`\x1b[34m[System]\x1b[0m Running \x1b[33mnpm install\x1b[0m...`);
-      const installProcess = await webcontainerInstance.spawn('npm', ['install']);
+      const packageJsonHash = btoa(initialFiles['package.json'] || '');
+      const cachedHash = localStorage.getItem('wc_package_json_hash');
+      
+      // Check if node_modules already exists
+      let nodeModulesExists = false;
+      try {
+        await webcontainerInstance.fs.readdir('node_modules');
+        nodeModulesExists = true;
+      } catch (e) {}
 
-      installProcess.output.pipeTo(new WritableStream({
-        write(data) {
-          xtermRef.current?.write(data);
+      if (nodeModulesExists && cachedHash === packageJsonHash) {
+        xtermRef.current?.writeln(`\x1b[34m[System]\x1b[0m Node modules already exist and package.json unchanged. Skipping install.`);
+      } else {
+        if (cachedHash === packageJsonHash) {
+          xtermRef.current?.writeln(`\x1b[34m[System]\x1b[0m Package.json unchanged. Running fast install...`);
+        } else {
+          xtermRef.current?.writeln(`\x1b[34m[System]\x1b[0m New dependencies detected. Running \x1b[33mnpm install\x1b[0m...`);
         }
-      }));
 
-      const installExitCode = await installProcess.exit;
-      if (installExitCode !== 0) {
-        xtermRef.current?.writeln(`\x1b[31m[System]\x1b[0m Installation failed with code ${installExitCode}`);
-        return;
+        const installProcess = await webcontainerInstance.spawn('npm', [
+          'install',
+          '--prefer-offline',
+          '--no-audit',
+          '--no-fund'
+        ]);
+
+        installProcess.output.pipeTo(new WritableStream({
+          write(data) {
+            xtermRef.current?.write(data);
+          }
+        }));
+
+        const installExitCode = await installProcess.exit;
+        if (installExitCode !== 0) {
+          xtermRef.current?.writeln(`\x1b[31m[System]\x1b[0m Installation failed with code ${installExitCode}`);
+          return;
+        }
       }
 
+      localStorage.setItem('wc_package_json_hash', packageJsonHash);
       xtermRef.current?.writeln(`\x1b[32m[System]\x1b[0m Installation complete. Starting dev server...`);
 
       if (devProcessRef.current) {

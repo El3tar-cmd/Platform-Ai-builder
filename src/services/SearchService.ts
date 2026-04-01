@@ -1,5 +1,4 @@
-import { z } from 'zod';
-
+// SearchService.ts
 export interface SearchResult {
   title: string;
   link: string;

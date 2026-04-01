@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Monitor, Loader2 } from 'lucide-react';
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 
 // Hooks
 import { useOllamaModels } from './hooks/useOllamaModels';
@@ -18,12 +19,16 @@ import { PreviewPanel } from './components/preview/PreviewPanel';
 import { CodeView } from './components/editor/CodeView';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { ProjectsSidebar } from './components/modals/ProjectsSidebar';
+import { PackageManagerModal } from './components/modals/PackageManagerModal';
+import { GitHubModal } from './components/modals/GitHubModal';
 
 export default function App() {
   // ─── UI State ───
   const [showSettings, setShowSettings] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProjectsSidebarOpen, setIsProjectsSidebarOpen] = useState(false);
+  const [isPackageManagerOpen, setIsPackageManagerOpen] = useState(false);
+  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
 
   // ─── Hooks ───
   const { endpoint, setEndpoint, models, selectedModel, setSelectedModel } =
@@ -55,6 +60,8 @@ export default function App() {
     isSearching,
     isWebSearchEnabled,
     setIsWebSearchEnabled,
+    isMultiAgentEnabled,
+    setIsMultiAgentEnabled,
     error,
     clearError,
     sendMessage,
@@ -71,6 +78,18 @@ export default function App() {
     currentProjectName: currentProject.name,
   });
 
+  const [isFirebaseConfigured, setIsFirebaseConfigured] = useState(false);
+  const [isTerminalVisible, setIsTerminalVisible] = useState(true);
+
+  useEffect(() => {
+    // Check if firebase config exists in files
+    if (files['firebase-applet-config.json']) {
+      setIsFirebaseConfigured(true);
+    } else {
+      setIsFirebaseConfigured(false);
+    }
+  }, [files]);
+
   const {
     iframeUrl,
     isBooting,
@@ -86,6 +105,8 @@ export default function App() {
     resetViewer,
     getIframeWidth,
     terminalRef,
+    installPackage,
+    uninstallPackage,
   } = useWebContainer({ files, isGenerating });
 
   // ─── Click-to-Edit & Sandbox Observer Listener ───
@@ -165,93 +186,198 @@ export default function App() {
     pushToHistory(messages, files);
   };
 
+  const handleOpenDatabase = () => {
+    // This will be handled by the agent when the user asks for it
+    console.log('Database setup requested');
+  };
+
+  const handleAddPackage = async (pkg: string) => {
+    const newPackageJson = await installPackage(pkg);
+    if (newPackageJson) {
+      updateCurrentProject({
+        files: {
+          ...files,
+          'package.json': newPackageJson,
+        },
+      });
+    }
+  };
+
+  const handleRemovePackage = async (pkg: string) => {
+    const newPackageJson = await uninstallPackage(pkg);
+    if (newPackageJson) {
+      updateCurrentProject({
+        files: {
+          ...files,
+          'package.json': newPackageJson,
+        },
+      });
+    }
+  };
+
+  // Get dependencies from package.json
+  const getDependencies = () => {
+    try {
+      const packageJsonStr = files['package.json'];
+      if (!packageJsonStr) return {};
+      const packageJson = JSON.parse(packageJsonStr);
+      return packageJson.dependencies || {};
+    } catch (error) {
+      return {};
+    }
+  };
+
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   // ─── Render ───
   return (
     <div className="flex h-screen w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden relative">
-      {/* Chat Sidebar */}
-      <ChatSidebar
-        currentProject={currentProject}
-        onOpenProjects={() => setIsProjectsSidebarOpen(true)}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        onClearChat={clearChat}
-        onOpenSettings={() => setShowSettings(true)}
-        messages={messages}
-        isGenerating={isGenerating}
-        isSearching={isSearching}
-        onPromptSelect={setInput}
-        input={input}
-        onInputChange={setInput}
-        onSend={handleSendMessage}
-        onStopGeneration={stopGeneration}
-        selectedModel={selectedModel}
-        isWebSearchEnabled={isWebSearchEnabled}
-        onToggleWebSearch={() => setIsWebSearchEnabled((prev) => !prev)}
-        error={error}
-        attachments={attachments}
-        isProcessing={isProcessing}
-        onRemoveAttachment={removeAttachment}
-        onFileChange={handleFileChange}
-        fileInputRef={fileInputRef}
-        isMobileMenuOpen={isMobileMenuOpen}
-        onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
-      />
-
-      {/* Main Stage */}
-      <div className="flex-1 flex flex-col bg-zinc-950 min-w-0">
-        <MainToolbar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          deviceSize={deviceSize}
-          onDeviceSizeChange={setDeviceSize}
-          isAutoSync={isAutoSync}
-          onToggleAutoSync={() => setIsAutoSync(!isAutoSync)}
-          onManualSync={syncPreview}
+      {/* Mobile Sidebar (Fixed Overlay) */}
+      {isMobile && (
+        <ChatSidebar
+          currentProject={currentProject}
+          onOpenProjects={() => setIsProjectsSidebarOpen(true)}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onClearChat={clearChat}
+          onOpenSettings={() => setShowSettings(true)}
+          messages={messages}
           isGenerating={isGenerating}
-          onResetViewer={handleResetViewer}
-          onExportZip={handleExportZip}
-          hasFiles={Object.keys(files).length > 0}
-          onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+          isSearching={isSearching}
+          onPromptSelect={setInput}
+          input={input}
+          onInputChange={setInput}
+          onSend={handleSendMessage}
+          onStopGeneration={stopGeneration}
+          selectedModel={selectedModel}
+          isWebSearchEnabled={isWebSearchEnabled}
+          onToggleWebSearch={() => setIsWebSearchEnabled((prev) => !prev)}
+          isMultiAgentEnabled={isMultiAgentEnabled}
+          onToggleMultiAgent={() => setIsMultiAgentEnabled((prev) => !prev)}
+          error={error}
+          attachments={attachments}
+          isProcessing={isProcessing}
+          onRemoveAttachment={removeAttachment}
+          onFileChange={handleFileChange}
+          fileInputRef={fileInputRef}
+          isFirebaseConfigured={isFirebaseConfigured}
+          isMobileMenuOpen={isMobileMenuOpen}
+          onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
         />
+      )}
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-hidden relative bg-[#0a0a0a] flex items-center justify-center p-4">
-          {Object.keys(files).length === 0 && !isGenerating ? (
-            <div className="text-center text-zinc-600 flex flex-col items-center justify-center h-full w-full absolute inset-0 z-20 bg-zinc-950">
-              <Monitor className="w-12 h-12 mb-4 opacity-20" />
-              <p>Your generated React app will appear here.</p>
-            </div>
-          ) : null}
+      <PanelGroup orientation="horizontal">
+        {/* Chat Sidebar Panel (Desktop only) */}
+        {!isMobile && (
+          <>
+            <Panel defaultSize={25} minSize={20} maxSize={40}>
+              <ChatSidebar
+                currentProject={currentProject}
+                onOpenProjects={() => setIsProjectsSidebarOpen(true)}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                onClearChat={clearChat}
+                onOpenSettings={() => setShowSettings(true)}
+                messages={messages}
+                isGenerating={isGenerating}
+                isSearching={isSearching}
+                onPromptSelect={setInput}
+                input={input}
+                onInputChange={setInput}
+                onSend={handleSendMessage}
+                onStopGeneration={stopGeneration}
+                selectedModel={selectedModel}
+                isWebSearchEnabled={isWebSearchEnabled}
+                onToggleWebSearch={() => setIsWebSearchEnabled((prev) => !prev)}
+                isMultiAgentEnabled={isMultiAgentEnabled}
+                onToggleMultiAgent={() => setIsMultiAgentEnabled((prev) => !prev)}
+                error={error}
+                attachments={attachments}
+                isProcessing={isProcessing}
+                onRemoveAttachment={removeAttachment}
+                onFileChange={handleFileChange}
+                fileInputRef={fileInputRef}
+                isFirebaseConfigured={isFirebaseConfigured}
+                isMobileMenuOpen={isMobileMenuOpen}
+                onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
+              />
+            </Panel>
+            <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-indigo-500 transition-colors cursor-col-resize" />
+          </>
+        )}
 
-          {/* Render PreviewPanel (kept alive to preserve xterm state) */}
-          <div className={`absolute inset-4 sm:inset-6 transition-opacity duration-200 ${
-            (activeTab === 'preview' || activeTab === 'console') ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
-          }`}>
-            <PreviewPanel
+        {/* Main Stage Panel */}
+        <Panel defaultSize={isMobile ? 100 : 75} minSize={0}>
+          <div className="h-full flex flex-col bg-zinc-950 min-w-0 w-full">
+            <MainToolbar
               activeTab={activeTab}
-              isSafeMode={isSafeMode}
+              onTabChange={setActiveTab}
+              deviceSize={deviceSize}
+              onDeviceSizeChange={setDeviceSize}
+              isAutoSync={isAutoSync}
+              onToggleAutoSync={() => setIsAutoSync(!isAutoSync)}
+              onManualSync={syncPreview}
               isGenerating={isGenerating}
-              iframeWidth={getIframeWidth()}
-              iframeUrl={iframeUrl}
-              isBooting={isBooting}
-              terminalRef={terminalRef}
+              onResetViewer={handleResetViewer}
+              onExportZip={handleExportZip}
+              hasFiles={Object.keys(files).length > 0}
+              onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+              onOpenPackageManager={() => setIsPackageManagerOpen(true)}
+              onOpenGitHub={() => setIsGitHubModalOpen(true)}
+              onOpenDatabase={handleOpenDatabase}
+              onSave={handleSaveToHistory}
+              isTerminalVisible={isTerminalVisible}
+              onToggleTerminal={() => setIsTerminalVisible(!isTerminalVisible)}
             />
-          </div>
 
-          {/* Render CodeView (kept alive to preserve Monaco editor state) */}
-          <div className={`absolute inset-4 sm:inset-6 transition-opacity duration-200 ${
-            activeTab === 'code' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
-          }`}>
-            <CodeView
-              files={files}
-              currentProject={currentProject}
-              messages={messages}
-              onUpdateFiles={(newFiles) => updateCurrentProject({ files: newFiles })}
-              onSaveToHistory={handleSaveToHistory}
-            />
+            {/* Content Area */}
+            <div className="flex-1 overflow-hidden relative bg-[#0a0a0a] flex items-center justify-center p-4">
+              {Object.keys(files).length === 0 && !isGenerating ? (
+                <div className="text-center text-zinc-600 flex flex-col items-center justify-center h-full w-full absolute inset-0 z-20 bg-zinc-950">
+                  <Monitor className="w-12 h-12 mb-4 opacity-20" />
+                  <p>Your generated React app will appear here.</p>
+                </div>
+              ) : null}
+
+              {/* Render PreviewPanel (kept alive to preserve xterm state) */}
+              <div className={`absolute inset-4 sm:inset-6 transition-opacity duration-200 ${
+                (activeTab === 'preview' || activeTab === 'console') ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
+              }`}>
+                <PreviewPanel
+                  activeTab={activeTab}
+                  isSafeMode={isSafeMode}
+                  isGenerating={isGenerating}
+                  iframeWidth={getIframeWidth()}
+                  iframeUrl={iframeUrl}
+                  isBooting={isBooting}
+                  terminalRef={terminalRef}
+                />
+              </div>
+
+              {/* Render CodeView (kept alive to preserve Monaco editor state) */}
+              <div className={`absolute inset-4 sm:inset-6 transition-opacity duration-200 ${
+                activeTab === 'code' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
+              }`}>
+                <CodeView
+                  files={files}
+                  currentProject={currentProject}
+                  messages={messages}
+                  onUpdateFiles={(newFiles) => updateCurrentProject({ files: newFiles })}
+                  onSaveToHistory={handleSaveToHistory}
+                  isTerminalVisible={isTerminalVisible}
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </Panel>
+      </PanelGroup>
 
       {/* Modals */}
       <ProjectsSidebar
@@ -272,6 +398,21 @@ export default function App() {
         models={models}
         selectedModel={selectedModel}
         onModelChange={setSelectedModel}
+      />
+
+      <PackageManagerModal
+        isOpen={isPackageManagerOpen}
+        onClose={() => setIsPackageManagerOpen(false)}
+        dependencies={getDependencies()}
+        onAddPackage={handleAddPackage}
+        onRemovePackage={handleRemovePackage}
+      />
+
+      <GitHubModal
+        isOpen={isGitHubModalOpen}
+        onClose={() => setIsGitHubModalOpen(false)}
+        files={files}
+        projectName={currentProject.name}
       />
     </div>
   );

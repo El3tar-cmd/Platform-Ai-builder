@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Paperclip, Send, Square, X, Globe, Eye, Mic, MicOff, FileText, Loader2 } from 'lucide-react';
+import { AlertCircle, Paperclip, Send, Square, X, Globe, Eye, Mic, MicOff, FileText, Loader2, Users } from 'lucide-react';
 import type { Attachment } from '../../types';
 
 interface ChatInputProps {
@@ -12,6 +12,8 @@ interface ChatInputProps {
   selectedModel: string;
   isWebSearchEnabled: boolean;
   onToggleWebSearch: () => void;
+  isMultiAgentEnabled?: boolean;
+  onToggleMultiAgent?: () => void;
   error: string | null;
   attachments: Attachment[];
   isProcessing?: boolean;
@@ -30,6 +32,8 @@ export function ChatInput({
   selectedModel,
   isWebSearchEnabled,
   onToggleWebSearch,
+  isMultiAgentEnabled,
+  onToggleMultiAgent,
   error,
   attachments,
   isProcessing,
@@ -232,6 +236,19 @@ export function ChatInput({
           >
             <Globe className={`w-4 h-4 ${isSearching ? 'animate-spin text-indigo-500' : ''}`} />
           </button>
+          {onToggleMultiAgent && (
+            <button
+              onClick={onToggleMultiAgent}
+              className={`p-1.5 rounded-md transition-colors shrink-0 ${
+                isMultiAgentEnabled 
+                  ? 'text-indigo-400 bg-indigo-500/10' 
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+              }`}
+              title={isMultiAgentEnabled ? "Multi-Agent Mode Enabled" : "Enable Multi-Agent Mode"}
+            >
+              <Users className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={requestDomSnapshot}
             className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-md transition-colors shrink-0"

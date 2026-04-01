@@ -67,26 +67,42 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
     fitAddonRef.current = fitAddon;
 
     const resizeObserver = new ResizeObserver(() => {
+      if (!terminalRef.current || terminalRef.current.offsetWidth === 0) return;
+      
       requestAnimationFrame(() => {
-        try { fitAddon.fit(); } catch (e) { }
+        try { 
+          if (xtermRef.current && fitAddonRef.current) {
+            fitAddonRef.current.fit(); 
+          }
+        } catch (e) { 
+          // Ignore fit errors when terminal is not ready or hidden
+        }
       });
     });
     resizeObserver.observe(terminalRef.current);
 
     return () => {
       resizeObserver.disconnect();
-      term.dispose();
-      xtermRef.current = null;
+      if (xtermRef.current) {
+        xtermRef.current.dispose();
+        xtermRef.current = null;
+      }
+      fitAddonRef.current = null;
     };
   }, []); // Run only once when ref is available
 
   // Fit terminal when tab changes
   useEffect(() => {
-    if (activeTab === 'console') {
+    if (activeTab === 'console' && terminalRef.current && terminalRef.current.offsetWidth > 0) {
       // Small timeout to ensure DOM paints before fitting
-      setTimeout(() => {
-        try { fitAddonRef.current?.fit(); } catch (e) { }
-      }, 50);
+      const timer = setTimeout(() => {
+        try { 
+          if (xtermRef.current && fitAddonRef.current) {
+            fitAddonRef.current.fit(); 
+          }
+        } catch (e) { }
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [activeTab]);
 
@@ -201,6 +217,54 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
     bootContainer(files);
   }, [bootContainer, files]);
 
+  const installPackage = useCallback(async (pkg: string) => {
+    if (!webcontainerInstance || !xtermRef.current) return;
+
+    xtermRef.current.writeln(`\x1b[34m[System]\x1b[0m Installing package: \x1b[33m${pkg}\x1b[0m...`);
+    const installProcess = await webcontainerInstance.spawn('npm', ['install', pkg]);
+    
+    installProcess.output.pipeTo(new WritableStream({
+      write(data) {
+        xtermRef.current?.write(data);
+      }
+    }));
+
+    const exitCode = await installProcess.exit;
+    if (exitCode === 0) {
+      xtermRef.current.writeln(`\x1b[32m[System]\x1b[0m Package \x1b[33m${pkg}\x1b[0m installed successfully.`);
+      // Read back package.json to sync state
+      const packageJson = await webcontainerInstance.fs.readFile('package.json', 'utf-8');
+      return packageJson;
+    } else {
+      xtermRef.current.writeln(`\x1b[31m[System]\x1b[0m Failed to install \x1b[33m${pkg}\x1b[0m (exit code ${exitCode})`);
+      return null;
+    }
+  }, []);
+
+  const uninstallPackage = useCallback(async (pkg: string) => {
+    if (!webcontainerInstance || !xtermRef.current) return;
+
+    xtermRef.current.writeln(`\x1b[34m[System]\x1b[0m Uninstalling package: \x1b[33m${pkg}\x1b[0m...`);
+    const uninstallProcess = await webcontainerInstance.spawn('npm', ['uninstall', pkg]);
+    
+    uninstallProcess.output.pipeTo(new WritableStream({
+      write(data) {
+        xtermRef.current?.write(data);
+      }
+    }));
+
+    const exitCode = await uninstallProcess.exit;
+    if (exitCode === 0) {
+      xtermRef.current.writeln(`\x1b[32m[System]\x1b[0m Package \x1b[33m${pkg}\x1b[0m uninstalled successfully.`);
+      // Read back package.json to sync state
+      const packageJson = await webcontainerInstance.fs.readFile('package.json', 'utf-8');
+      return packageJson;
+    } else {
+      xtermRef.current.writeln(`\x1b[31m[System]\x1b[0m Failed to uninstall \x1b[33m${pkg}\x1b[0m (exit code ${exitCode})`);
+      return null;
+    }
+  }, []);
+
   const getIframeWidth = useCallback(() => {
     switch (deviceSize) {
       case 'mobile':
@@ -225,6 +289,8 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
     setActiveTab,
     syncPreview,
     resetViewer,
+    installPackage,
+    uninstallPackage,
     getIframeWidth,
     terminalRef,
   };

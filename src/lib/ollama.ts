@@ -66,11 +66,15 @@ export async function fetchOllamaModels(endpoint: string): Promise<string[]> {
   try {
     const baseUrl = endpoint.replace(/\/$/, '');
     const res = await fetch(`${baseUrl}/api/tags`);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn(`Ollama API returned status ${res.status}. Is it running?`);
+      return [];
+    }
     const data = await res.json();
+    if (!data.models) return [];
     return data.models.map((m: any) => m.name);
   } catch (e) {
-    console.error('Failed to fetch Ollama models:', e);
+    console.error('Failed to fetch Ollama models. Ensure Ollama is running locally (http://localhost:11434) and CORS is allowed.', e);
     return [];
   }
 }

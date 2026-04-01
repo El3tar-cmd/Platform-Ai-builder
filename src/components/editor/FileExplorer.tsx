@@ -111,14 +111,15 @@ export function FileExplorer({
         {Object.keys(files).sort().map((path) => (
           <div
             key={path}
-            className={`group w-full flex items-center justify-between px-2 py-1 rounded-md text-sm transition-colors ${
+            onClick={() => renamingFile !== path && onSelectFile(path)}
+            className={`group w-full flex items-center justify-between px-2 py-1 rounded-md text-sm transition-colors cursor-pointer ${
               selectedFile === path
                 ? 'bg-indigo-500/10 text-indigo-400'
                 : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
             }`}
           >
             {renamingFile === path ? (
-              <form onSubmit={handleRenameSubmit} className="flex-1 flex items-center gap-2 min-w-0 py-1">
+              <form onSubmit={handleRenameSubmit} className="flex-1 flex items-center gap-2 min-w-0 py-1" onClick={e => e.stopPropagation()}>
                 <FileCode2 className="w-4 h-4 shrink-0" />
                 <input
                   ref={renameInputRef}
@@ -136,13 +137,10 @@ export function FileExplorer({
               </form>
             ) : (
               <>
-                <button
-                  onClick={() => onSelectFile(path)}
-                  className="flex-1 flex items-center gap-2 min-w-0 text-left py-2 px-1"
-                >
+                <div className="flex-1 flex items-center gap-2 min-w-0 py-2">
                   <FileCode2 className="w-4 h-4 shrink-0" />
                   <span className="truncate">{path}</span>
-                </button>
+                </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 sm:group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => {

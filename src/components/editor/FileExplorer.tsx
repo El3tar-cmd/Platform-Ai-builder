@@ -8,6 +8,7 @@ interface FileExplorerProps {
   onCreateFile: (path: string) => void;
   onDeleteFile: (path: string) => void;
   onRenameFile: (oldPath: string, newPath: string) => void;
+  onClose?: () => void;
 }
 
 export function FileExplorer({
@@ -17,6 +18,7 @@ export function FileExplorer({
   onCreateFile,
   onDeleteFile,
   onRenameFile,
+  onClose,
 }: FileExplorerProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [newFileName, setNewFileName] = useState('');
@@ -57,12 +59,22 @@ export function FileExplorer({
   };
 
   return (
-    <div className="w-full h-full border-r border-zinc-800 bg-zinc-900/50 flex flex-col">
-      <div className="p-3 border-b border-zinc-800 flex items-center justify-between">
-        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Files</span>
+    <div className="w-full h-full border-r border-zinc-800 bg-zinc-900 flex flex-col">
+      <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
+        <div className="flex items-center gap-2">
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-zinc-800 rounded text-zinc-400 sm:hidden"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Files</span>
+        </div>
         <button
           onClick={() => setIsCreating(true)}
-          className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
+          className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
           title="New File"
         >
           <Plus className="w-4 h-4" />
@@ -71,7 +83,7 @@ export function FileExplorer({
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {isCreating && (
-          <form onSubmit={handleCreateSubmit} className="flex items-center gap-2 px-2 py-1.5 bg-zinc-800/50 rounded-md">
+          <form onSubmit={handleCreateSubmit} className="flex items-center gap-2 px-2 py-2 bg-zinc-800/50 rounded-md">
             <FileCode2 className="w-4 h-4 shrink-0 text-zinc-500" />
             <input
               ref={createInputRef}
@@ -87,8 +99,10 @@ export function FileExplorer({
                 }
               }}
               onBlur={() => {
-                setIsCreating(false);
-                setNewFileName('');
+                if (!newFileName.trim()) {
+                  setIsCreating(false);
+                  setNewFileName('');
+                }
               }}
             />
           </form>
@@ -97,14 +111,14 @@ export function FileExplorer({
         {Object.keys(files).sort().map((path) => (
           <div
             key={path}
-            className={`group w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
+            className={`group w-full flex items-center justify-between px-2 py-1 rounded-md text-sm transition-colors ${
               selectedFile === path
                 ? 'bg-indigo-500/10 text-indigo-400'
                 : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
             }`}
           >
             {renamingFile === path ? (
-              <form onSubmit={handleRenameSubmit} className="flex-1 flex items-center gap-2 min-w-0">
+              <form onSubmit={handleRenameSubmit} className="flex-1 flex items-center gap-2 min-w-0 py-1">
                 <FileCode2 className="w-4 h-4 shrink-0" />
                 <input
                   ref={renameInputRef}
@@ -124,19 +138,19 @@ export function FileExplorer({
               <>
                 <button
                   onClick={() => onSelectFile(path)}
-                  className="flex-1 flex items-center gap-2 min-w-0 text-left"
+                  className="flex-1 flex items-center gap-2 min-w-0 text-left py-2 px-1"
                 >
                   <FileCode2 className="w-4 h-4 shrink-0" />
                   <span className="truncate">{path}</span>
                 </button>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 sm:group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setRenamingFile(path);
                       setRenameValue(path);
                     }}
-                    className="p-1 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
+                    className="p-2 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
                     title="Rename"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -148,7 +162,7 @@ export function FileExplorer({
                         onDeleteFile(path);
                       }
                     }}
-                    className="p-1 hover:bg-red-500/20 rounded text-zinc-400 hover:text-red-400 transition-colors"
+                    className="p-2 hover:bg-red-500/20 rounded text-zinc-400 hover:text-red-400 transition-colors"
                     title="Delete"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

@@ -48,9 +48,21 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
   const devProcessRef = useRef<any>(null);
   const prevIsGenerating = useRef(isGenerating);
 
+  const attachTerminal = useCallback((el: HTMLDivElement | null) => {
+    if (!el || !xtermRef.current) return;
+    try {
+      xtermRef.current.open(el);
+      if (fitAddonRef.current) {
+        fitAddonRef.current.fit();
+      }
+    } catch (e) {
+      console.error('Failed to attach terminal', e);
+    }
+  }, []);
+
   // Initialize Terminal exactly once
   useEffect(() => {
-    if (!terminalRef.current || xtermRef.current) return;
+    if (xtermRef.current) return;
 
     const term = new Terminal({
       theme: { background: '#09090b', foreground: '#a1a1aa' },
@@ -60,29 +72,12 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-    term.open(terminalRef.current);
-    try { fitAddon.fit(); } catch (e) { }
-
+    
+    // We don't open it here anymore, we wait for attachTerminal
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    const resizeObserver = new ResizeObserver(() => {
-      if (!terminalRef.current || terminalRef.current.offsetWidth === 0) return;
-      
-      requestAnimationFrame(() => {
-        try { 
-          if (xtermRef.current && xtermRef.current.element && fitAddonRef.current) {
-            fitAddonRef.current.fit(); 
-          }
-        } catch (e) { 
-          // Ignore fit errors when terminal is not ready or hidden
-        }
-      });
-    });
-    resizeObserver.observe(terminalRef.current);
-
     return () => {
-      resizeObserver.disconnect();
       if (xtermRef.current) {
         try {
           xtermRef.current.dispose();
@@ -91,7 +86,7 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
       }
       fitAddonRef.current = null;
     };
-  }, []); // Run only once when ref is available
+  }, []);
 
   // Fit terminal when tab changes
   useEffect(() => {
@@ -295,5 +290,6 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
     uninstallPackage,
     getIframeWidth,
     terminalRef,
+    attachTerminal,
   };
 }

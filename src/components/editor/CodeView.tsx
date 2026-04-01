@@ -13,6 +13,8 @@ interface CodeViewProps {
   onSaveToHistory: () => void;
   isTerminalVisible?: boolean;
   terminalRef?: React.RefObject<HTMLDivElement | null>;
+  isMobile?: boolean;
+  attachTerminal?: (el: HTMLDivElement | null) => void;
 }
 
 function getLanguage(filename: string): string {
@@ -31,19 +33,27 @@ export function CodeView({
   onSaveToHistory,
   isTerminalVisible = true,
   terminalRef,
+  isMobile = false,
+  attachTerminal,
 }: CodeViewProps) {
   const [selectedFile, setSelectedFile] = useState<string>('src/App.tsx');
   const [isDiffView, setIsDiffView] = useState(false);
+  const [showExplorer, setShowExplorer] = useState(!isMobile);
 
   const previousFiles =
     currentProject.historyIndex > 0
       ? currentProject.history[currentProject.historyIndex - 1].files
       : {};
 
+  const handleSelectFile = (path: string) => {
+    setSelectedFile(path);
+    if (isMobile) setShowExplorer(false);
+  };
+
   const handleCreateFile = (path: string) => {
     if (!files[path]) {
       onUpdateFiles({ ...files, [path]: '// New file\n' });
-      setSelectedFile(path);
+      handleSelectFile(path);
     }
   };
 
@@ -53,7 +63,7 @@ export function CodeView({
     onUpdateFiles(newFiles);
     if (selectedFile === path) {
       const remainingFiles = Object.keys(newFiles);
-      setSelectedFile(remainingFiles.length > 0 ? remainingFiles[0] : '');
+      handleSelectFile(remainingFiles.length > 0 ? remainingFiles[0] : '');
     }
   };
 
@@ -64,59 +74,87 @@ export function CodeView({
       delete newFiles[oldPath];
       onUpdateFiles(newFiles);
       if (selectedFile === oldPath) {
-        setSelectedFile(newPath);
+        handleSelectFile(newPath);
       }
     }
   };
 
+  const localTerminalRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (isTerminalVisible && attachTerminal && localTerminalRef.current) {
+      attachTerminal(localTerminalRef.current);
+    }
+  }, [isTerminalVisible, attachTerminal]);
+
   return (
-    <div className="w-full h-full flex bg-[#1e1e1e] rounded-lg border border-zinc-800 overflow-hidden">
+    <div className="w-full h-full flex bg-[#1e1e1e] rounded-lg border border-zinc-800 overflow-hidden relative">
+      {/* Mobile Explorer Toggle */}
+      {isMobile && (
+        <button
+          onClick={() => setShowExplorer(!showExplorer)}
+          className="absolute bottom-4 right-4 z-50 p-3 bg-indigo-600 text-white rounded-full shadow-lg"
+        >
+          <FileCode2 className="w-6 h-6" />
+        </button>
+      )}
+
       <PanelGroup orientation="horizontal">
-        <Panel defaultSize={20} minSize={15} maxSize={40}>
-          <FileExplorer
-            files={files}
-            selectedFile={selectedFile}
-            onSelectFile={setSelectedFile}
-            onCreateFile={handleCreateFile}
-            onDeleteFile={handleDeleteFile}
-            onRenameFile={handleRenameFile}
-          />
-        </Panel>
+        {(!isMobile || showExplorer) && (
+          <>
+            <Panel 
+              defaultSize={isMobile ? 100 : 20} 
+              minSize={isMobile ? 100 : 15} 
+              maxSize={isMobile ? 100 : 40}
+              className={isMobile ? 'absolute inset-0 z-40' : ''}
+            >
+              <FileExplorer
+                files={files}
+                selectedFile={selectedFile}
+                onSelectFile={handleSelectFile}
+                onCreateFile={handleCreateFile}
+                onDeleteFile={handleDeleteFile}
+                onRenameFile={handleRenameFile}
+                onClose={() => isMobile && setShowExplorer(false)}
+              />
+            </Panel>
+            {!isMobile && <PanelResizeHandle className="w-1 bg-[#252526] hover:bg-indigo-500 transition-colors cursor-col-resize" />}
+          </>
+        )}
 
-        <PanelResizeHandle className="w-1 bg-[#252526] hover:bg-indigo-500 transition-colors cursor-col-resize" />
-
-        <Panel defaultSize={80} minSize={30}>
-          <PanelGroup orientation="vertical">
-            <Panel defaultSize={70} minSize={20}>
-              <div className="flex-1 h-full overflow-hidden flex flex-col bg-[#1e1e1e]">
-                {/* Editor Header */}
-                <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3c3c3c]">
-                  <div className="text-sm text-[#cccccc] flex items-center gap-2">
-                    <FileCode2 className="w-4 h-4" />
-                    {selectedFile}
+        {(!isMobile || !showExplorer) && (
+          <Panel defaultSize={isMobile ? 100 : 80} minSize={isMobile ? 100 : 30}>
+            <PanelGroup orientation="vertical">
+              <Panel defaultSize={70} minSize={20}>
+                <div className="flex-1 h-full overflow-hidden flex flex-col bg-[#1e1e1e]">
+                  {/* Editor Header */}
+                  <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3c3c3c]">
+                    <div className="text-sm text-[#cccccc] flex items-center gap-2 truncate">
+                      <FileCode2 className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{selectedFile}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <button
+                        onClick={() => setIsDiffView(!isDiffView)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                          isDiffView
+                            ? 'bg-indigo-500/20 text-indigo-400'
+                            : 'bg-[#3c3c3c] text-[#cccccc] hover:bg-[#4d4d4d]'
+                        }`}
+                      >
+                        <GitCompare className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Diff View</span>
+                      </button>
+                      <button
+                        onClick={onSaveToHistory}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-[#3c3c3c] text-[#cccccc] hover:bg-[#4d4d4d] transition-colors"
+                        title="Save manual edits to history"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Save</span>
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setIsDiffView(!isDiffView)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                        isDiffView
-                          ? 'bg-indigo-500/20 text-indigo-400'
-                          : 'bg-[#3c3c3c] text-[#cccccc] hover:bg-[#4d4d4d]'
-                      }`}
-                    >
-                      <GitCompare className="w-3.5 h-3.5" />
-                      Diff View
-                    </button>
-                    <button
-                      onClick={onSaveToHistory}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-[#3c3c3c] text-[#cccccc] hover:bg-[#4d4d4d] transition-colors"
-                      title="Save manual edits to history"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                      Save
-                    </button>
-                  </div>
-                </div>
 
                 {/* Editor Body */}
                 <div className="flex-1 relative">
@@ -168,14 +206,15 @@ export function CodeView({
                         Terminal
                       </div>
                     </div>
-                    <div ref={terminalRef} className="flex-1 overflow-hidden p-2" />
+                    <div ref={localTerminalRef} className="flex-1 overflow-hidden p-2" />
                   </div>
                 </Panel>
               </>
             )}
           </PanelGroup>
         </Panel>
-      </PanelGroup>
-    </div>
-  );
+      )}
+    </PanelGroup>
+  </div>
+);
 }

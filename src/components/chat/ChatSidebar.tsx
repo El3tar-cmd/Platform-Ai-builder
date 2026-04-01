@@ -27,6 +27,7 @@ interface ChatSidebarProps {
   onToggleWebSearch: () => void;
   error: string | null;
   attachments: Attachment[];
+  isProcessing?: boolean;
   onRemoveAttachment: (index: number) => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -55,6 +56,7 @@ export function ChatSidebar({
   onToggleWebSearch,
   error,
   attachments,
+  isProcessing,
   onRemoveAttachment,
   onFileChange,
   fileInputRef,
@@ -104,6 +106,7 @@ export function ChatSidebar({
           onToggleWebSearch={onToggleWebSearch}
           error={error}
           attachments={attachments}
+          isProcessing={isProcessing}
           onRemoveAttachment={onRemoveAttachment}
           onFileChange={onFileChange}
           fileInputRef={fileInputRef}

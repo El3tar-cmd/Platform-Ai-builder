@@ -3,6 +3,11 @@ export type { OllamaMessage } from '../lib/ollama';
 export interface Attachment {
   url: string;
   base64: string;
+  name?: string;
+  type?: string;
+  size?: number;
+  isText?: boolean;
+  textContent?: string;
 }
 
 export interface ProjectHistoryState {

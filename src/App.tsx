@@ -45,7 +45,7 @@ export default function App() {
     clearChat,
   } = useProjects();
 
-  const { attachments, fileInputRef, handleFileChange, removeAttachment, clearAttachments } =
+  const { attachments, isProcessing, fileInputRef, handleFileChange, removeAttachment, clearAttachments } =
     useAttachments();
 
   const {
@@ -189,6 +189,7 @@ export default function App() {
         onToggleWebSearch={() => setIsWebSearchEnabled((prev) => !prev)}
         error={error}
         attachments={attachments}
+        isProcessing={isProcessing}
         onRemoveAttachment={removeAttachment}
         onFileChange={handleFileChange}
         fileInputRef={fileInputRef}

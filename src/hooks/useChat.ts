@@ -51,12 +51,22 @@ export function useChat({
   }, []);
 
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || !selectedModel) return;
+    if (!input.trim() && attachments.length === 0) return;
+    if (!selectedModel) return;
+
+    const imageAttachments = attachments.filter(a => !a.isText);
+    const textAttachments = attachments.filter(a => a.isText);
+
+    let finalInput = input;
+    if (textAttachments.length > 0) {
+      const textContent = textAttachments.map(a => `\n\n--- FILE: ${a.name} ---\n${a.textContent}\n--- END FILE ---`).join('');
+      finalInput += textContent;
+    }
 
     const userMsg: OllamaMessage = {
       role: 'user',
-      content: input,
-      ...(attachments.length > 0 && { images: attachments.map((a) => a.base64) }),
+      content: finalInput,
+      ...(imageAttachments.length > 0 && { images: imageAttachments.map((a) => a.base64) }),
     };
     const newMessages = [...messages, userMsg];
 
@@ -64,7 +74,8 @@ export function useChat({
     const isFirstMessage = messages.length === 1 && messages[0].role === 'system';
     let newProjectName = currentProjectName;
     if (isFirstMessage) {
-      newProjectName = input.length > 30 ? input.substring(0, 30) + '...' : input;
+      const nameSource = input.trim() || (attachments.length > 0 ? `Attachment: ${attachments[0].name || 'File'}` : 'New Project');
+      newProjectName = nameSource.length > 30 ? nameSource.substring(0, 30) + '...' : nameSource;
     }
 
     updateCurrentProject({ messages: newMessages, name: newProjectName });

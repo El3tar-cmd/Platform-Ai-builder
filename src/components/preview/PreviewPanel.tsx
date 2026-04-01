@@ -69,9 +69,9 @@ export function PreviewPanel({
               {isGenerating && !isBooting ? (
                 <>
                   <Loader2 className="w-10 h-10 animate-spin mb-4 text-amber-400" />
-                  <p className="font-medium text-zinc-300">Waiting for files...</p>
+                  <p className="font-medium text-zinc-300">Processing Request...</p>
                   <p className="text-xs text-zinc-500 mt-2 max-w-xs">
-                    The virtual OS will boot up after the initial code generation is complete.
+                    The DevHive Engine is analyzing your input. If code is generated, the virtual OS will boot up automatically.
                   </p>
                 </>
               ) : (

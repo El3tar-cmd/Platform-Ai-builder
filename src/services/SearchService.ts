@@ -39,8 +39,15 @@ export class SearchService {
         return this.formatResults(query, searxngResults, 'Web Search (SearXNG)');
       }
 
-      // Strategy 2: Fallback to Wikipedia (extremely reliable for factual queries)
-      console.log(`[SearchService] SearXNG failed or returned empty. Falling back to Wikipedia.`);
+      // Strategy 2: Fallback to DuckDuckGo HTML via proxy
+      console.log(`[SearchService] SearXNG failed. Trying DuckDuckGo HTML...`);
+      const ddgResults = await this.searchDuckDuckGo(query);
+      if (ddgResults && ddgResults.length > 0) {
+        return this.formatResults(query, ddgResults, 'DuckDuckGo Search');
+      }
+
+      // Strategy 3: Fallback to Wikipedia (extremely reliable for factual queries)
+      console.log(`[SearchService] DuckDuckGo failed. Falling back to Wikipedia.`);
       const wikiResults = await this.searchWikipedia(query);
       if (wikiResults && wikiResults.length > 0) {
         return this.formatResults(query, wikiResults, 'Wikipedia Search');
@@ -116,6 +123,53 @@ export class SearchService {
     } catch (error) {
       clearTimeout(timeoutId);
       throw error;
+    }
+  }
+
+  private static async searchDuckDuckGo(query: string): Promise<SearchResult[] | null> {
+    const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const proxiedUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(proxiedUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) return null;
+      const data = await response.json();
+      const html = data.contents;
+      
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const results: SearchResult[] = [];
+      
+      const resultElements = doc.querySelectorAll('.result');
+      resultElements.forEach((el) => {
+        const titleEl = el.querySelector('.result__title .result__a');
+        const snippetEl = el.querySelector('.result__snippet');
+        
+        if (titleEl && snippetEl) {
+          const title = titleEl.textContent?.trim() || '';
+          let link = titleEl.getAttribute('href') || '';
+          if (link.startsWith('//duckduckgo.com/l/?uddg=')) {
+            const urlParam = new URLSearchParams(link.split('?')[1]).get('uddg');
+            if (urlParam) link = decodeURIComponent(urlParam);
+          }
+          const snippet = snippetEl.textContent?.trim() || '';
+          
+          if (title && link && snippet) {
+            results.push({ title, link, snippet, source: 'DuckDuckGo' });
+          }
+        }
+      });
+      
+      return results.length > 0 ? results.slice(0, MAX_RESULTS) : null;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      console.error('[SearchService] DuckDuckGo search failed:', e);
+      return null;
     }
   }
 

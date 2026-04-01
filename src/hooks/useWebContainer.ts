@@ -71,7 +71,7 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
       
       requestAnimationFrame(() => {
         try { 
-          if (xtermRef.current && fitAddonRef.current) {
+          if (xtermRef.current && xtermRef.current.element && fitAddonRef.current) {
             fitAddonRef.current.fit(); 
           }
         } catch (e) { 
@@ -84,7 +84,9 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
     return () => {
       resizeObserver.disconnect();
       if (xtermRef.current) {
-        xtermRef.current.dispose();
+        try {
+          xtermRef.current.dispose();
+        } catch (e) { }
         xtermRef.current = null;
       }
       fitAddonRef.current = null;
@@ -97,7 +99,7 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
       // Small timeout to ensure DOM paints before fitting
       const timer = setTimeout(() => {
         try { 
-          if (xtermRef.current && fitAddonRef.current) {
+          if (xtermRef.current && xtermRef.current.element && fitAddonRef.current) {
             fitAddonRef.current.fit(); 
           }
         } catch (e) { }

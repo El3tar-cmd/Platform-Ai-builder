@@ -15,12 +15,22 @@ const SEARXNG_INSTANCES = [
   'https://search.mdosch.de',
   'https://searx.roflcopter.fr',
   'https://paulgo.io',
-  'https://search.bus-hit.me'
+  'https://search.bus-hit.me',
+  'https://searx.work',
+  'https://searx.info',
+  'https://searx.xyz',
+  'https://search.disroot.org',
+  'https://searx.mx',
+  'https://searx.space'
 ];
 
 const CORS_PROXIES = [
   'https://corsproxy.io/?',
   'https://api.allorigins.win/raw?url=',
+  'https://thingproxy.freeboard.io/fetch/',
+  'https://cors-anywhere.herokuapp.com/',
+  'https://proxy.cors.sh/',
+  'https://api.codetabs.com/v1/proxy?quest=',
 ];
 
 export class SearchService {
@@ -71,12 +81,15 @@ export class SearchService {
       try {
         const results = await this.fetchSearxng(targetUrl, true);
         if (results) return results;
+        // Small delay before trying next instance
+        await new Promise(resolve => setTimeout(resolve, 200));
       } catch (e) {
         for (const proxy of shuffledProxies) {
           try {
             const proxiedUrl = `${proxy}${encodeURIComponent(targetUrl)}`;
             const results = await this.fetchSearxng(proxiedUrl, false);
             if (results) return results;
+            await new Promise(resolve => setTimeout(resolve, 200));
           } catch (proxyError) {
             continue;
           }
@@ -100,6 +113,11 @@ export class SearchService {
       });
 
       clearTimeout(timeoutId);
+
+      if (response.status === 429) {
+        console.warn(`[SearchService] Rate limited (429) for: ${url}`);
+        return null;
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);

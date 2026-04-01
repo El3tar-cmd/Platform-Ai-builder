@@ -12,6 +12,7 @@ interface UseWebContainerOptions {
 }
 
 let webcontainerInstance: WebContainer | null = null;
+let bootPromise: Promise<WebContainer> | null = null;
 
 // Convert flat path map to WebContainer FileSystemTree
 function buildFileSystemTree(files: Record<string, string>) {
@@ -41,7 +42,6 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
   const [isAutoSync, setIsAutoSync] = useState(true);
   const [deviceSize, setDeviceSize] = useState<DeviceSize>('desktop');
   const [activeTab, setActiveTab] = useState<ActiveTab>('preview');
-  const [isTerminalReady, setIsTerminalReady] = useState(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
@@ -49,46 +49,55 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
   const devProcessRef = useRef<any>(null);
   const prevIsGenerating = useRef(isGenerating);
 
-  // Initialize Terminal
+  const attachTerminal = useCallback((el: HTMLDivElement | null) => {
+    if (!el || !xtermRef.current) return;
+    
+    try {
+      // If already attached to this element, just fit
+      if (xtermRef.current.element === el) {
+        setTimeout(() => fitAddonRef.current?.fit(), 50);
+        return;
+      }
+
+      // Re-attach to new element
+      xtermRef.current.open(el);
+      
+      // Ensure it fits the new container
+      setTimeout(() => {
+        try {
+          fitAddonRef.current?.fit();
+        } catch (e) {}
+      }, 150);
+    } catch (e) {
+      console.error('Failed to attach terminal', e);
+    }
+  }, []);
+
+  // Initialize Terminal exactly once
   useEffect(() => {
-    if (!terminalRef.current || xtermRef.current) return;
+    if (xtermRef.current) return;
 
     const term = new Terminal({
-      theme: { background: '#09090b', foreground: '#a1a1aa' },
-      fontFamily: 'monospace',
+      theme: { 
+        background: '#09090b', 
+        foreground: '#a1a1aa',
+        cursor: '#6366f1',
+        selectionBackground: '#312e81'
+      },
+      fontFamily: '"Fira Code", monospace',
       fontSize: 12,
       convertEol: true,
       cursorBlink: true,
+      allowProposedApi: true
     });
+    
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     
-    try {
-      term.open(terminalRef.current);
-      fitAddon.fit();
-      xtermRef.current = term;
-      fitAddonRef.current = fitAddon;
-      setIsTerminalReady(true);
-      term.writeln('\x1b[32m[System]\x1b[0m Terminal initialized.');
-    } catch (e) {
-      console.error("Failed to initialize terminal", e);
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      if (!terminalRef.current || terminalRef.current.offsetWidth === 0) return;
-      
-      requestAnimationFrame(() => {
-        try { 
-          if (xtermRef.current && xtermRef.current.element && fitAddonRef.current) {
-            fitAddonRef.current.fit(); 
-          }
-        } catch (e) { }
-      });
-    });
-    resizeObserver.observe(terminalRef.current);
+    xtermRef.current = term;
+    fitAddonRef.current = fitAddon;
 
     return () => {
-      resizeObserver.disconnect();
       if (xtermRef.current) {
         try {
           xtermRef.current.dispose();
@@ -96,77 +105,68 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
         xtermRef.current = null;
       }
       fitAddonRef.current = null;
-      setIsTerminalReady(false);
     };
-  }, [terminalRef.current]); // Re-run if ref element changes
+  }, []);
 
   // Fit terminal when tab changes
   useEffect(() => {
-    if (activeTab === 'console' && terminalRef.current && terminalRef.current.offsetWidth > 0) {
-      // Small timeout to ensure DOM paints before fitting
+    if ((activeTab === 'console' || activeTab === 'code') && fitAddonRef.current) {
       const timer = setTimeout(() => {
         try { 
-          if (xtermRef.current && xtermRef.current.element && fitAddonRef.current) {
-            fitAddonRef.current.fit(); 
-          }
+          fitAddonRef.current?.fit(); 
         } catch (e) { }
-      }, 100);
+      }, 200);
       return () => clearTimeout(timer);
     }
   }, [activeTab]);
 
+  // Initial boot tracking
+  const hasBooted = useRef(false);
+  const isBootingRef = useRef(false);
+
   // Boot WebContainer and run dev server
   const bootContainer = useCallback(async (initialFiles: Record<string, string>) => {
-    if (!xtermRef.current) return;
+    if (!xtermRef.current || isBootingRef.current) return;
 
+    isBootingRef.current = true;
     setIsBooting(true);
+    
     try {
-      if (!webcontainerInstance) {
-        xtermRef.current?.writeln(`\x1b[34m[System]\x1b[0m Booting WebContainer micro-OS...`);
-        webcontainerInstance = await WebContainer.boot();
-        xtermRef.current?.writeln('\x1b[32m[System]\x1b[0m OS Booted successfully.');
-      } else {
-        xtermRef.current?.writeln('\x1b[34m[System]\x1b[0m Connecting to existing WebContainer...');
+      // Use a global promise to ensure only one boot happens across all hook instances
+      if (!bootPromise) {
+        bootPromise = (async () => {
+          // Clear terminal for a fresh boot look
+          xtermRef.current?.clear();
+          xtermRef.current?.writeln(`\x1b[1;34m[System]\x1b[0m Booting WebContainer micro-OS...`);
+          const instance = await WebContainer.boot();
+          webcontainerInstance = instance;
+          xtermRef.current?.writeln('\x1b[1;32m[System]\x1b[0m OS Booted successfully.');
+          
+          // Listen for server port (only once per instance)
+          instance.on('server-ready', (port, url) => {
+            xtermRef.current?.writeln(`\x1b[1;32m[System]\x1b[0m Server ready at \x1b[1;36m${url}\x1b[0m`);
+            setIframeUrl(url);
+          });
+
+          return instance;
+        })();
       }
 
-      // Listen for server port
-      webcontainerInstance.on('server-ready', (port, url) => {
-        xtermRef.current?.writeln(`\x1b[32m[System]\x1b[0m Server ready at \x1b[36m${url}\x1b[0m`);
-        setIframeUrl(url);
-      });
+      const instance = await bootPromise;
 
       // Mount files
       const tree = buildFileSystemTree(getWebContainerFiles(initialFiles));
-      xtermRef.current?.writeln(`\x1b[34m[System]\x1b[0m Mounting files...`);
-      await webcontainerInstance.mount(tree);
+      xtermRef.current?.writeln(`\x1b[1;34m[System]\x1b[0m Mounting project files...`);
+      await instance.mount(tree);
 
-      // Run npm install
-      const packageJsonContent = initialFiles['package.json'] || '';
-      const packageJsonHash = packageJsonContent.length.toString() + packageJsonContent.slice(0, 100);
-      const cachedHash = localStorage.getItem('wc_package_json_hash');
-      
-      // Check if node_modules already exists
-      let nodeModulesExists = false;
-      try {
-        await webcontainerInstance.fs.readdir('node_modules');
-        nodeModulesExists = true;
-      } catch (e) {}
+      // Check if node_modules exists to skip install
+      // Note: WebContainer FS is volatile, so this usually only skips within a session
+      const entries = await instance.fs.readdir('.', { withFileTypes: true });
+      const hasNodeModules = entries.some(entry => entry.isDirectory() && entry.name === 'node_modules');
 
-      if (nodeModulesExists && cachedHash === packageJsonHash) {
-        xtermRef.current?.writeln(`\x1b[34m[System]\x1b[0m Node modules already exist and package.json unchanged. Skipping install.`);
-      } else {
-        if (cachedHash === packageJsonHash) {
-          xtermRef.current?.writeln(`\x1b[34m[System]\x1b[0m Package.json unchanged. Running fast install...`);
-        } else {
-          xtermRef.current?.writeln(`\x1b[34m[System]\x1b[0m New dependencies detected. Running \x1b[33mnpm install\x1b[0m...`);
-        }
-
-        const installProcess = await webcontainerInstance.spawn('npm', [
-          'install',
-          '--prefer-offline',
-          '--no-audit',
-          '--no-fund'
-        ]);
+      if (!hasNodeModules) {
+        xtermRef.current?.writeln(`\x1b[1;34m[System]\x1b[0m Running \x1b[1;33mnpm install\x1b[0m...`);
+        const installProcess = await instance.spawn('npm', ['install']);
 
         installProcess.output.pipeTo(new WritableStream({
           write(data) {
@@ -176,19 +176,22 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
 
         const installExitCode = await installProcess.exit;
         if (installExitCode !== 0) {
-          xtermRef.current?.writeln(`\x1b[31m[System]\x1b[0m Installation failed with code ${installExitCode}`);
+          xtermRef.current?.writeln(`\x1b[1;31m[System]\x1b[0m Installation failed with code ${installExitCode}`);
+          isBootingRef.current = false;
           return;
         }
+        xtermRef.current?.writeln(`\x1b[1;32m[System]\x1b[0m Installation complete.`);
+      } else {
+        xtermRef.current?.writeln(`\x1b[1;34m[System]\x1b[0m Dependencies found, skipping install.`);
       }
 
-      localStorage.setItem('wc_package_json_hash', packageJsonHash);
-      xtermRef.current?.writeln(`\x1b[32m[System]\x1b[0m Installation complete. Starting dev server...`);
+      xtermRef.current?.writeln(`\x1b[1;34m[System]\x1b[0m Starting dev server...`);
 
       if (devProcessRef.current) {
         devProcessRef.current.kill();
       }
 
-      const startProcess = await webcontainerInstance.spawn('npm', ['run', 'dev']);
+      const startProcess = await instance.spawn('npm', ['run', 'dev']);
       devProcessRef.current = startProcess;
       startProcess.output.pipeTo(
         new WritableStream({
@@ -199,7 +202,10 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
       );
 
     } catch (err: any) {
-      xtermRef.current?.writeln(`\x1b[31m[System]\x1b[0m Error: ${err.message}`);
+      xtermRef.current?.writeln(`\x1b[1;31m[System]\x1b[0m Error: ${err.message}`);
+      // Reset promise on fatal error so we can try again
+      bootPromise = null;
+      isBootingRef.current = false;
     } finally {
       setIsBooting(false);
     }
@@ -211,7 +217,7 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
 
     // Auto-sync debounced
     const timer = setTimeout(async () => {
-      if (webcontainerInstance) {
+      if (webcontainerInstance && !isBooting) {
         const tree = buildFileSystemTree(getWebContainerFiles(files));
         try {
           await webcontainerInstance.mount(tree);
@@ -222,17 +228,15 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
     }, isGenerating ? 3000 : 500);
 
     return () => clearTimeout(timer);
-  }, [files, isGenerating, isAutoSync, isSafeMode]);
+  }, [files, isGenerating, isAutoSync, isSafeMode, isBooting]);
 
-  // Initial boot tracking
-  const hasBooted = useRef(false);
+  // Initial boot effect - simplified dependencies to avoid multiple boots
   useEffect(() => {
-    // Only boot if we have xterm initialized, so we don't swallow logs
-    if (Object.keys(files).length > 0 && !hasBooted.current && !isGenerating && isTerminalReady) {
+    if (Object.keys(files).length > 0 && !hasBooted.current && !isGenerating && xtermRef.current) {
       hasBooted.current = true;
       bootContainer(files);
     }
-  }, [files, isGenerating, bootContainer, isTerminalReady]);
+  }, [isGenerating, bootContainer]); // Removed files and activeTab from deps
 
   // Expose manual sync and reset
   const syncPreview = useCallback(async () => {
@@ -328,5 +332,6 @@ export function useWebContainer({ files, isGenerating }: UseWebContainerOptions)
     uninstallPackage,
     getIframeWidth,
     terminalRef,
+    attachTerminal,
   };
 }

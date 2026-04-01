@@ -377,6 +377,7 @@ export default function App() {
                   terminalRef={terminalRef}
                   isMobile={isMobile}
                   attachTerminal={attachTerminal}
+                  activeTab={activeTab}
                 />
               </div>
             </div>

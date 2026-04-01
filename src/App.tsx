@@ -105,7 +105,6 @@ export default function App() {
     resetViewer,
     getIframeWidth,
     terminalRef,
-    attachTerminal,
     installPackage,
     uninstallPackage,
   } = useWebContainer({ files, isGenerating });
@@ -359,7 +358,6 @@ export default function App() {
                   iframeUrl={iframeUrl}
                   isBooting={isBooting}
                   terminalRef={terminalRef}
-                  attachTerminal={attachTerminal}
                 />
               </div>
 
@@ -374,10 +372,6 @@ export default function App() {
                   onUpdateFiles={(newFiles) => updateCurrentProject({ files: newFiles })}
                   onSaveToHistory={handleSaveToHistory}
                   isTerminalVisible={isTerminalVisible}
-                  terminalRef={terminalRef}
-                  isMobile={isMobile}
-                  attachTerminal={attachTerminal}
-                  activeTab={activeTab}
                 />
               </div>
             </div>

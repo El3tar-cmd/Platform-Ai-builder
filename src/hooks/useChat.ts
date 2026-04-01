@@ -137,9 +137,40 @@ export function useChat({
 
         // 1. Pre-search if Globe is enabled (only on first turn)
         if (isWebSearchEnabled && loopCount === 1 && !isMultiAgentEnabled) {
-          setIsSearching(`Optimizing query for "${input.substring(0, 20)}..."`);
+          setIsSearching(`Enhancing query for search...`);
+          
+          let optimizedQuery = input;
           try {
-            searchContext = await SearchService.searchWeb(input);
+            // REAL Query Enhancement: Ask the model to generate a search query
+            const enhancementPrompt = `You are a search query optimizer. Transform the user's request into a concise, effective search query for DuckDuckGo and Wikipedia. Output ONLY the query text.
+User Request: ${input}`;
+
+            const response = await fetch(`${endpoint}/api/generate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: selectedModel,
+                prompt: enhancementPrompt,
+                stream: false,
+                options: { temperature: 0.1 }
+              }),
+              signal: abortControllerRef.current?.signal
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              if (data.response) {
+                optimizedQuery = data.response.trim().replace(/^"|"$/g, '');
+                console.log(`[Search] Original: "${input}" -> Optimized: "${optimizedQuery}"`);
+              }
+            }
+          } catch (e) {
+            console.error('Query enhancement failed, falling back to original input:', e);
+          }
+
+          setIsSearching(`Searching Web: ${optimizedQuery}...`);
+          try {
+            searchContext = await SearchService.searchWeb(optimizedQuery);
           } catch (e) {
             console.error('Search failed:', e);
           } finally {

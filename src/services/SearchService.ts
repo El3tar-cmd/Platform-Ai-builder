@@ -6,36 +6,37 @@ export interface SearchResult {
   source?: string;
 }
 
-const SEARCH_TIMEOUT_MS = 10000;
-const MAX_RESULTS_PER_SOURCE = 4;
+const SEARCH_TIMEOUT_MS = 8000;
+const MAX_RESULTS_PER_SOURCE = 5;
 
+// Highly reliable CORS proxies
 const CORS_PROXIES = [
+  'https://api.codetabs.com/v1/proxy?quest=',
   'https://api.allorigins.win/raw?url=',
   'https://corsproxy.io/?',
-  'https://thingproxy.freeboard.io/fetch/',
 ];
 
 export class SearchService {
   /**
-   * Main entry point for web search.
-   * Performs parallel searches on DuckDuckGo and Wikipedia for maximum speed.
+   * Performs a high-performance web search across multiple sources in parallel.
+   * Uses optimized proxy rotation for maximum reliability.
    */
   static async searchWeb(query: string): Promise<string> {
-    console.log(`[SearchService] Executing high-performance search for: "${query}"`);
+    console.log(`[SearchService] Executing optimized search for: "${query}"`);
     
     if (!query || query.trim() === '') {
       return this.formatError('Empty query provided.');
     }
 
     try {
-      // Execute searches in parallel to minimize latency
+      // Execute searches in parallel
       const [ddgResults, wikiResults] = await Promise.all([
         this.searchDuckDuckGo(query).catch(err => {
-          console.error('[SearchService] DuckDuckGo failed:', err);
+          console.warn('[SearchService] DuckDuckGo failed:', err);
           return [] as SearchResult[];
         }),
         this.searchWikipedia(query).catch(err => {
-          console.error('[SearchService] Wikipedia failed:', err);
+          console.warn('[SearchService] Wikipedia failed:', err);
           return [] as SearchResult[];
         })
       ]);
@@ -46,7 +47,7 @@ export class SearchService {
         return this.formatResults(query, combinedResults);
       }
 
-      return this.formatError(`No relevant results found for "${query}" on DuckDuckGo or Wikipedia.`);
+      return this.formatError(`No relevant results found for "${query}".`);
 
     } catch (error: any) {
       console.error(`[SearchService] Fatal error:`, error);
@@ -55,13 +56,13 @@ export class SearchService {
   }
 
   /**
-   * Scrapes DuckDuckGo HTML results using a rotating proxy strategy.
+   * Scrapes DuckDuckGo HTML results using parallel proxy attempts for maximum speed.
    */
   private static async searchDuckDuckGo(query: string): Promise<SearchResult[]> {
     const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     
-    // Try proxies in order
-    for (const proxy of CORS_PROXIES) {
+    // Create a promise for each proxy
+    const proxyPromises = CORS_PROXIES.map(async (proxy) => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
@@ -69,20 +70,24 @@ export class SearchService {
         const response = await fetch(`${proxy}${encodeURIComponent(targetUrl)}`, {
           signal: controller.signal,
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
           }
         });
 
         clearTimeout(timeoutId);
 
-        if (!response.ok) continue;
+        if (!response.ok) throw new Error(`Status ${response.status}`);
 
         const html = await response.text();
+        if (!html || html.length < 1000) throw new Error('Insufficient content');
+
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         const results: SearchResult[] = [];
         
         const resultElements = doc.querySelectorAll('.result');
+        if (resultElements.length === 0) throw new Error('No results in HTML');
+
         resultElements.forEach((el) => {
           const titleEl = el.querySelector('.result__title .result__a');
           const snippetEl = el.querySelector('.result__snippet');
@@ -91,73 +96,99 @@ export class SearchService {
             const title = titleEl.textContent?.trim() || '';
             let link = titleEl.getAttribute('href') || '';
             
-            // Clean DDG redirect links
             if (link.includes('uddg=')) {
               try {
-                const urlObj = new URL('https://duckduckgo.com' + link);
-                const uddg = urlObj.searchParams.get('uddg');
+                const uddg = new URLSearchParams(link.split('?')[1]).get('uddg');
                 if (uddg) link = decodeURIComponent(uddg);
               } catch (e) {
-                // Fallback if URL parsing fails
                 const match = link.match(/uddg=([^&]+)/);
                 if (match && match[1]) link = decodeURIComponent(match[1]);
               }
             }
 
             const snippet = snippetEl.textContent?.trim() || '';
-            
-            if (title && link && snippet && !link.includes('duckduckgo.com/y.js')) {
+            if (title && link && snippet && !link.includes('duckduckgo.com')) {
               results.push({ title, link, snippet, source: 'DuckDuckGo' });
             }
           }
         });
 
-        if (results.length > 0) {
-          return results.slice(0, MAX_RESULTS_PER_SOURCE);
-        }
+        if (results.length === 0) throw new Error('No valid results found');
+        return results.slice(0, MAX_RESULTS_PER_SOURCE);
       } catch (e) {
-        console.warn(`[SearchService] Proxy ${proxy} failed for DDG, trying next...`);
-        continue;
+        throw e;
       }
+    });
+
+    try {
+      // Use any() to get the first successful proxy response
+      // We use a custom implementation of any() that ignores errors unless all fail
+      return await this.promiseAny(proxyPromises);
+    } catch (e) {
+      console.warn('[SearchService] All DuckDuckGo proxies failed');
+      return [];
     }
-    return [];
   }
 
   /**
-   * Fetches data from Wikipedia API.
+   * Custom promiseAny that returns the first successful result, or throws if all fail.
+   */
+  private static async promiseAny<T>(promises: Promise<T>[]): Promise<T> {
+    return new Promise((resolve, reject) => {
+      let errors: any[] = [];
+      let finished = 0;
+      promises.forEach(p => {
+        p.then(resolve).catch(err => {
+          errors.push(err);
+          finished++;
+          if (finished === promises.length) {
+            reject(new Error('All proxies failed'));
+          }
+        });
+      });
+    });
+  }
+
+  /**
+   * Fetches data from Wikipedia API (English and Arabic for better coverage).
    */
   private static async searchWikipedia(query: string): Promise<SearchResult[]> {
-    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json&origin=*`;
-    
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+    const languages = ['en', 'ar'];
+    const results: SearchResult[] = [];
 
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
+    await Promise.all(languages.map(async (lang) => {
+      try {
+        const url = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json&origin=*`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
 
-      if (!response.ok) return [];
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
 
-      const data = await response.json();
-      
-      if (data?.query?.search && data.query.search.length > 0) {
-        return data.query.search.slice(0, MAX_RESULTS_PER_SOURCE).map((item: any) => ({
-          title: item.title,
-          link: `https://en.wikipedia.org/wiki/${encodeURIComponent(item.title.replace(/ /g, '_'))}`,
-          snippet: item.snippet.replace(/<\/?[^>]+(>|$)/g, ""),
-          source: 'Wikipedia'
-        }));
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (data?.query?.search) {
+          const langResults = data.query.search.slice(0, 3).map((item: any) => ({
+            title: item.title,
+            link: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(item.title.replace(/ /g, '_'))}`,
+            snippet: item.snippet.replace(/<\/?[^>]+(>|$)/g, ""),
+            source: `Wikipedia (${lang.toUpperCase()})`
+          }));
+          results.push(...langResults);
+        }
+      } catch (e) {
+        console.warn(`[SearchService] Wikipedia (${lang}) failed:`, e);
       }
-    } catch (error) {
-      console.error('[SearchService] Wikipedia API error:', error);
-    }
-    return [];
+    }));
+
+    return results;
   }
 
   private static formatResults(query: string, results: SearchResult[]): string {
     let output = `\n--- LIVE WEB INTELLIGENCE: SEARCH RESULTS ---\n`;
-    output += `Target Query: "${query}"\n`;
-    output += `Generated At: ${new Date().toLocaleString()}\n\n`;
+    output += `Query: "${query}"\n`;
+    output += `Timestamp: ${new Date().toLocaleString()}\n\n`;
 
     results.forEach((r, i) => {
       output += `[RESULT ${i + 1}]\n`;

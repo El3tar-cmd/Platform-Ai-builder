@@ -137,13 +137,22 @@ export function useChat({
 
         // 1. Pre-search if Globe is enabled (only on first turn)
         if (isWebSearchEnabled && loopCount === 1 && !isMultiAgentEnabled) {
-          setIsSearching(`Enhancing query for search...`);
+          setIsSearching(`Optimizing search query...`);
           
           let optimizedQuery = input;
           try {
             // REAL Query Enhancement: Ask the model to generate a search query
-            const enhancementPrompt = `You are a search query optimizer. Transform the user's request into a concise, effective search query for DuckDuckGo and Wikipedia. Output ONLY the query text.
-User Request: ${input}`;
+            const enhancementPrompt = `You are a professional search query optimizer. 
+Your task is to transform the user's natural language request into a highly effective, concise search query for DuckDuckGo and Wikipedia.
+- Remove conversational filler (e.g., "tell me about", "search for").
+- Focus on key entities, technical terms, and intent.
+- If the request is in Arabic, provide a query that works well for both Arabic and English sources.
+- Output ONLY the final query string. No explanations.
+
+User Request: "${input}"`;
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout for enhancement
 
             const response = await fetch(`${endpoint}/api/generate`, {
               method: 'POST',
@@ -152,27 +161,36 @@ User Request: ${input}`;
                 model: selectedModel,
                 prompt: enhancementPrompt,
                 stream: false,
-                options: { temperature: 0.1 }
+                options: { 
+                  temperature: 0.1,
+                  num_predict: 50 // Limit output length
+                }
               }),
-              signal: abortControllerRef.current?.signal
+              signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
 
             if (response.ok) {
               const data = await response.json();
               if (data.response) {
-                optimizedQuery = data.response.trim().replace(/^"|"$/g, '');
-                console.log(`[Search] Original: "${input}" -> Optimized: "${optimizedQuery}"`);
+                const cleaned = data.response.trim().replace(/^["']|["']$/g, '');
+                if (cleaned && cleaned.length > 2) {
+                  optimizedQuery = cleaned;
+                  console.log(`[Search] Original: "${input}" -> Optimized: "${optimizedQuery}"`);
+                }
               }
             }
           } catch (e) {
-            console.error('Query enhancement failed, falling back to original input:', e);
+            console.warn('[Search] Query enhancement failed or timed out, using original input:', e);
           }
 
           setIsSearching(`Searching Web: ${optimizedQuery}...`);
           try {
             searchContext = await SearchService.searchWeb(optimizedQuery);
           } catch (e) {
-            console.error('Search failed:', e);
+            console.error('[Search] Search failed:', e);
+            searchContext = `\n--- WEB SEARCH ERROR ---\nCould not retrieve live data. Proceeding with internal knowledge.\n`;
           } finally {
             setIsSearching(false);
           }
